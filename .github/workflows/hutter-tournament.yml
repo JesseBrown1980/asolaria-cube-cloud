@@ -1,0 +1,107 @@
+name: hutter-tournament enwik8 (generic control ceiling)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'hutter/variants/**'
+      - '.github/workflows/hutter-tournament.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: ${{ matrix.key }}
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - { key: base,  path: hutter/hutter_pilot.rs }
+          - { key: mix,   path: hutter/variants/mix/hp_mix.rs }
+          - { key: match, path: hutter/variants/match/hp_match.rs }
+          - { key: dir,   path: hutter/variants/dir/hp_dir.rs }
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch enwik8
+        run: |
+          set -e
+          ok=0
+          for url in https://mattmahoney.net/dc/enwik8.zip http://mattmahoney.net/dc/enwik8.zip ; do
+            if curl -fL --retry 3 --connect-timeout 20 -o e.zip "$url"; then ok=1; break; fi
+          done
+          test "$ok" -eq 1
+          unzip -o e.zip >/dev/null
+          test "$(wc -c < enwik8)" -eq 100000000
+      - name: Compile
+        run: rustc --edition=2021 -O "${{ matrix.path }}" -o hp
+      - name: Compress + decompress + verify + measure
+        run: |
+          set -e
+          ./hp compress enwik8 e.hp | tee log
+          ./hp decompress e.hp e.rt | tee -a log
+          a=$(sha256sum enwik8 | cut -d' ' -f1)
+          b=$(sha256sum e.rt   | cut -d' ' -f1)
+          if [ "$a" != "$b" ]; then echo "ROUNDTRIP_FAIL"; exit 1; fi
+          arch=$(wc -c < e.hp)
+          dec=$(wc -c < "${{ matrix.path }}")
+          gz=$(gzip -9 -c enwik8 | wc -c)
+          bpc=$(python3 -c "print(f'{$arch*8/1e8:.4f}')")
+          {
+            echo "HUTTERTOURNEY|variant=${{ matrix.key }}|corpus=enwik8|lane=cloud_gitram|seat=8467a937cba309f7|json=0"
+            echo "MEASURE|input_bytes=100000000|archive_bytes=$arch|decoder_src_bytes=$dec|total_bytes=$((arch+dec))|gzip9_bytes=$gz|bpc=$bpc|roundtrip_exact=1|json=0"
+            echo "LABEL|class=GENERIC_CONTROL_CEILING|note=NOT_the_Omega_per_layer_Asolaria_stack|integrated_codec=DESIGN_pending|score=archive_plus_decoder_never_gain_ledger|enwik8_record_approx=14800000|archive_ratio=NOT_CLAIMED|claims_final_apex=0|json=0"
+          } > RESULT-${{ matrix.key }}.hbp
+          sha256sum RESULT-${{ matrix.key }}.hbp | tee RESULT-${{ matrix.key }}.hbp.sha256
+          echo "=== ${{ matrix.key }} ==="; cat RESULT-${{ matrix.key }}.hbp
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tourney-${{ matrix.key }}
+          if-no-files-found: error
+          path: |
+            log
+            RESULT-${{ matrix.key }}.hbp
+            RESULT-${{ matrix.key }}.hbp.sha256
+
+  dir-curve:
+    name: dir-curve (held-out learning curve on real enwik8 text)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch enwik8 + take an 8 MB slice (real Wikipedia bytes)
+        run: |
+          set -e
+          ok=0
+          for url in https://mattmahoney.net/dc/enwik8.zip http://mattmahoney.net/dc/enwik8.zip ; do
+            if curl -fL --retry 3 --connect-timeout 20 -o e.zip "$url"; then ok=1; break; fi
+          done
+          test "$ok" -eq 1
+          unzip -o e.zip >/dev/null
+          head -c 8000000 enwik8 > slice.bin
+          echo "slice bytes: $(wc -c < slice.bin)"
+      - name: Compile dir
+        run: rustc --edition=2021 -O hutter/variants/dir/hp_dir.rs -o hp
+      - name: Run the held-out learning curve (expand vs dup vs shuffle)
+        run: |
+          set -e
+          ./hp curve slice.bin | tee curve.log
+          {
+            echo "DIRCURVE|corpus=enwik8_slice_8MB|held_out=second_half|controls=expand_dup_shuffle|lane=cloud_gitram|note=directional_expansion_vs_repeated_exposure_vs_bookkeeping|score=held_out_archive_bytes_only|claims_final_apex=0|json=0"
+          } > DIR-CURVE.hbp
+          grep -E '^CKPT\|' curve.log >> DIR-CURVE.hbp || true
+          sha256sum DIR-CURVE.hbp | tee DIR-CURVE.hbp.sha256
+          echo "=== CURVE ==="; cat DIR-CURVE.hbp
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dir-curve
+          if-no-files-found: error
+          path: |
+            curve.log
+            DIR-CURVE.hbp
+            DIR-CURVE.hbp.sha256
