@@ -1,0 +1,122 @@
+name: hutter omega-expand (v2) — enwik8 dir-sweep + enwik9 (1 GB)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'hutter/expand/**'
+      - '.github/workflows/hutter-omega-expand.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pin-e8:
+    name: pin-enwik8
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch + verify enwik8
+        run: |
+          set -euo pipefail
+          ok=0
+          for url in https://mattmahoney.net/dc/enwik8.zip http://mattmahoney.net/dc/enwik8.zip ; do
+            if curl -fL --retry 4 --retry-all-errors --connect-timeout 20 -A 'asolaria/1.0' -o e8.zip "$url"; then ok=1; break; fi
+          done
+          test "$ok" -eq 1
+          unzip -o e8.zip >/dev/null
+          test "$(wc -c < enwik8)" -eq 100000000
+          echo "2b49720ec4d78c3c9fabaee6e4179a5e997302b3a70029f30f2d582218c024a8  enwik8" | sha256sum -c -
+      - uses: actions/upload-artifact@v4
+        with: { name: pinned-enwik8, path: enwik8, if-no-files-found: error, retention-days: 1 }
+
+  e8-sweep:
+    name: e8-dirs${{ matrix.dirs }}
+    needs: pin-e8
+    strategy:
+      fail-fast: false
+      matrix:
+        dirs: [4, 8, 40]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: pinned-enwik8, path: . }
+      - run: test "$(wc -c < enwik8)" -eq 100000000
+      - name: Compile v2 expand codec
+        run: rustc --edition=2021 -O hutter/expand/hp_omega_expand.rs -o hp
+      - name: Compress at dirs=${{ matrix.dirs }}, roundtrip, measure
+        run: |
+          set -e
+          /usr/bin/time -v ./hp compress enwik8 e.hp --dirs ${{ matrix.dirs }} 2> time.log | tee log
+          ./hp decompress e.hp e.rt | tee -a log
+          a=$(sha256sum enwik8 | cut -d' ' -f1); b=$(sha256sum e.rt | cut -d' ' -f1)
+          if [ "$a" != "$b" ]; then echo "ROUNDTRIP_FAIL"; exit 1; fi
+          arch=$(wc -c < e.hp); dec=$(wc -c < hutter/expand/hp_omega_expand.rs)
+          bpc=$(python3 -c "print(f'{$arch*8/1e8:.4f}')")
+          secs=$(grep -m1 'wall clock' time.log | grep -oE '[0-9:.]+$' || echo NA)
+          {
+            echo "OMEGAEXPAND|variant=v2_implA|corpus=enwik8|dirs=${{ matrix.dirs }}|lane=cloud_gitram|seat=8467a937cba309f7|json=0"
+            echo "MEASURE|input_bytes=100000000|archive_bytes=$arch|decoder_src_bytes=$dec|total_bytes=$((arch+dec))|bpc=$bpc|roundtrip_exact=1|encode_wall=$secs|json=0"
+            echo "LABEL|mix_ceiling_bytes=26421998|enwik8_record_approx=14800000|expansion_axis=1|score=archive_plus_decoder|archive_ratio=NOT_CLAIMED|claims_final_apex=0|json=0"
+          } > RESULT-e8-d${{ matrix.dirs }}.hbp
+          sha256sum RESULT-e8-d${{ matrix.dirs }}.hbp | tee RESULT-e8-d${{ matrix.dirs }}.hbp.sha256
+          cat RESULT-e8-d${{ matrix.dirs }}.hbp
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: e8-d${{ matrix.dirs }}, path: "RESULT-e8-d${{ matrix.dirs }}.hbp*", if-no-files-found: warn }
+
+  pin-e9:
+    name: pin-enwik9-1GB
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Fetch + verify enwik9 (1 GB)
+        run: |
+          set -euo pipefail
+          ok=0
+          for url in https://mattmahoney.net/dc/enwik9.zip http://mattmahoney.net/dc/enwik9.zip ; do
+            if curl -fL --retry 4 --retry-all-errors --connect-timeout 20 -A 'asolaria/1.0' -o e9.zip "$url"; then ok=1; break; fi
+          done
+          test "$ok" -eq 1
+          unzip -o e9.zip >/dev/null
+          test "$(wc -c < enwik9)" -eq 1000000000
+          sha256sum enwik9 | tee enwik9.sha256
+      - uses: actions/upload-artifact@v4
+        with: { name: pinned-enwik9, path: enwik9, if-no-files-found: error, retention-days: 1 }
+
+  e9:
+    name: e9-dirs40-1GB
+    needs: pin-e9
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: pinned-enwik9, path: . }
+      - run: test "$(wc -c < enwik9)" -eq 1000000000
+      - name: Compile v2 expand codec
+        run: rustc --edition=2021 -O hutter/expand/hp_omega_expand.rs -o hp
+      - name: Compress enwik9 at dirs=40, roundtrip, measure (byte-exact SHA)
+        run: |
+          set -e
+          a=$(sha256sum enwik9 | cut -d' ' -f1)
+          /usr/bin/time -v ./hp compress enwik9 e9.hp --dirs 40 2> time9.log | tee log9
+          ./hp decompress e9.hp e9.rt | tee -a log9
+          b=$(sha256sum e9.rt | cut -d' ' -f1)
+          if [ "$a" != "$b" ]; then echo "ENWIK9_ROUNDTRIP_FAIL"; exit 1; fi
+          arch=$(wc -c < e9.hp); dec=$(wc -c < hutter/expand/hp_omega_expand.rs)
+          bpc=$(python3 -c "print(f'{$arch*8/1e9:.4f}')")
+          secs=$(grep -m1 'wall clock' time9.log | grep -oE '[0-9:.]+$' || echo NA)
+          {
+            echo "OMEGAEXPAND9|variant=v2_implA|corpus=enwik9_1GB|dirs=40|lane=cloud_gitram|seat=8467a937cba309f7|json=0"
+            echo "MEASURE|input_bytes=1000000000|archive_bytes=$arch|decoder_src_bytes=$dec|total_bytes=$((arch+dec))|bpc=$bpc|roundtrip_exact=1|encode_wall=$secs|json=0"
+            echo "SHA|enwik9_sha256=$a|restored_sha256=$b|match=1|json=0"
+            echo "LABEL|enwik9_record_approx=110000000|score=archive_plus_decoder|archive_ratio=NOT_CLAIMED|claims_final_apex=0|json=0"
+          } > RESULT-e9.hbp
+          sha256sum RESULT-e9.hbp | tee RESULT-e9.hbp.sha256
+          cat RESULT-e9.hbp
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: e9-result, path: "RESULT-e9.hbp*", if-no-files-found: warn }
