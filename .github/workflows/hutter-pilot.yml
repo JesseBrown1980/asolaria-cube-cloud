@@ -1,0 +1,89 @@
+name: hutter-pilot enwik8 (base codec, GitRAM/cloud)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'hutter/**'
+      - '.github/workflows/hutter-pilot.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  enwik8-base:
+    name: enwik8-base
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch enwik8 (100 MB Hutter dev corpus)
+        run: |
+          set -e
+          ok=0
+          for url in \
+            https://mattmahoney.net/dc/enwik8.zip \
+            http://mattmahoney.net/dc/enwik8.zip \
+            https://cs.fit.edu/~mmahoney/compression/enwik8.zip ; do
+            echo "trying $url"
+            if curl -fL --retry 3 --connect-timeout 20 -o enwik8.zip "$url"; then ok=1; break; fi
+          done
+          test "$ok" -eq 1
+          unzip -o enwik8.zip >/dev/null
+          test -f enwik8
+          sz=$(wc -c < enwik8); echo "enwik8 bytes: $sz"
+          test "$sz" -eq 100000000
+          sha256sum enwik8 | tee enwik8.sha256
+
+      - name: Compile the standalone pilot codec
+        run: rustc --edition=2021 -O hutter/hutter_pilot.rs -o hp
+
+      - name: Compress, decompress, and prove byte-exact roundtrip
+        run: |
+          set -e
+          ./hp compress enwik8 enwik8.hp | tee pilot.log
+          ./hp decompress enwik8.hp enwik8.rt | tee -a pilot.log
+          a=$(sha256sum enwik8   | cut -d' ' -f1)
+          b=$(sha256sum enwik8.rt | cut -d' ' -f1)
+          echo "orig_sha=$a"      | tee -a pilot.log
+          echo "roundtrip_sha=$b" | tee -a pilot.log
+          if [ "$a" != "$b" ]; then echo "ROUNDTRIP_FAIL"; exit 1; fi
+          echo "ROUNDTRIP_EXACT=1" | tee -a pilot.log
+          arch=$(wc -c < enwik8.hp)
+          dec=$(wc -c < hutter/hutter_pilot.rs)
+          gz=$(gzip -9 -c enwik8 | wc -c)
+          total=$((arch + dec))
+          bpc=$(python3 -c "print(f'{$arch*8/100000000:.4f}')")
+          echo "archive_bytes=$arch decoder_src_bytes=$dec total_bytes=$total gzip9_bytes=$gz bpc=$bpc" | tee -a pilot.log
+
+      - name: Seal content-free HBP receipt
+        run: |
+          set -e
+          arch=$(wc -c < enwik8.hp)
+          dec=$(wc -c < hutter/hutter_pilot.rs)
+          gz=$(gzip -9 -c enwik8 | wc -c)
+          total=$((arch + dec))
+          bpc=$(python3 -c "print(f'{$arch*8/100000000:.4f}')")
+          a=$(sha256sum enwik8   | cut -d' ' -f1)
+          b=$(sha256sum enwik8.rt | cut -d' ' -f1)
+          {
+            echo "HUTTERPILOT|schema=ASOLARIA-HUTTER-PRETEST-BASE-V1|corpus=enwik8|seat=8467a937cba309f7|glyph=BH1024:SEAT-FABLE5|lane=cloud_gitram|codec=order2_exact_binary_ac|json=0"
+            echo "MEASURE|input_bytes=100000000|archive_bytes=$arch|decoder_src_bytes=$dec|total_bytes=$total|gzip9_bytes=$gz|bpc=$bpc|roundtrip_exact=1|json=0"
+            echo "RECORDCTX|enwik8_best_known_approx_bytes=14800000|scope=DEV_CORPUS_PRE_TEST_NOT_ENWIK9|archive_ratio=NOT_CLAIMED|claims_final_apex=0|higher_variants=HELD_TOURNAMENT|json=0"
+            echo "SHA|enwik8_sha256=$a|roundtrip_sha256=$b|match=1|json=0"
+          } > HUTTER-PILOT-BASE-enwik8.hbp
+          sha256sum HUTTER-PILOT-BASE-enwik8.hbp | tee HUTTER-PILOT-BASE-enwik8.hbp.sha256
+          echo "=== RECEIPT ==="; cat HUTTER-PILOT-BASE-enwik8.hbp
+
+      - name: Upload receipt (no corpus, no archive)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hutter-pilot-base-enwik8
+          if-no-files-found: error
+          path: |
+            pilot.log
+            HUTTER-PILOT-BASE-enwik8.hbp
+            HUTTER-PILOT-BASE-enwik8.hbp.sha256
+            enwik8.sha256
