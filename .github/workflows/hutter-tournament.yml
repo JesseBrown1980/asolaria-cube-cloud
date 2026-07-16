@@ -11,8 +11,40 @@ permissions:
   contents: read
 
 jobs:
+  corpus:
+    name: fetch-and-pin-enwik8-once
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch and verify enwik8 once
+        run: |
+          set -euo pipefail
+          mkdir -p corpus
+          ok=0
+          for url in \
+            https://mattmahoney.net/dc/enwik8.zip \
+            http://mattmahoney.net/dc/enwik8.zip \
+            https://cs.fit.edu/~mmahoney/compression/enwik8.zip ; do
+            if curl -fL --retry 4 --retry-all-errors --connect-timeout 20 \
+              -A 'asolaria-lossless-control/1.0' -o corpus/enwik8.zip "$url"; then
+              ok=1
+              break
+            fi
+          done
+          test "$ok" -eq 1
+          unzip -o corpus/enwik8.zip -d corpus >/dev/null
+          test "$(wc -c < corpus/enwik8)" -eq 100000000
+          echo "2b49720ec4d78c3c9fabaee6e4179a5e997302b3a70029f30f2d582218c024a8  corpus/enwik8" | sha256sum -c -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pinned-enwik8
+          path: corpus/enwik8
+          if-no-files-found: error
+          retention-days: 1
+
   bench:
     name: ${{ matrix.key }}
+    needs: corpus
     strategy:
       fail-fast: false
       max-parallel: 5
@@ -26,16 +58,15 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch enwik8
+      - uses: actions/download-artifact@v4
+        with:
+          name: pinned-enwik8
+          path: .
+      - name: Verify pinned enwik8
         run: |
-          set -e
-          ok=0
-          for url in https://mattmahoney.net/dc/enwik8.zip http://mattmahoney.net/dc/enwik8.zip ; do
-            if curl -fL --retry 3 --connect-timeout 20 -o e.zip "$url"; then ok=1; break; fi
-          done
-          test "$ok" -eq 1
-          unzip -o e.zip >/dev/null
+          set -euo pipefail
           test "$(wc -c < enwik8)" -eq 100000000
+          echo "2b49720ec4d78c3c9fabaee6e4179a5e997302b3a70029f30f2d582218c024a8  enwik8" | sha256sum -c -
       - name: Compile
         run: rustc --edition=2021 -O "${{ matrix.path }}" -o hp
       - name: Compress + decompress + verify + measure
@@ -53,6 +84,7 @@ jobs:
           {
             echo "HUTTERTOURNEY|variant=${{ matrix.key }}|corpus=enwik8|lane=cloud_gitram|seat=8467a937cba309f7|json=0"
             echo "MEASURE|input_bytes=100000000|archive_bytes=$arch|decoder_src_bytes=$dec|total_bytes=$((arch+dec))|gzip9_bytes=$gz|bpc=$bpc|roundtrip_exact=1|json=0"
+            echo "SHA|input_sha256=$a|restored_sha256=$b|match=1|json=0"
             echo "LABEL|class=GENERIC_CONTROL_CEILING|note=NOT_the_Omega_per_layer_Asolaria_stack|integrated_codec=DESIGN_pending|score=archive_plus_decoder_never_gain_ledger|enwik8_record_approx=14800000|archive_ratio=NOT_CLAIMED|claims_final_apex=0|json=0"
           } > RESULT-${{ matrix.key }}.hbp
           sha256sum RESULT-${{ matrix.key }}.hbp | tee RESULT-${{ matrix.key }}.hbp.sha256
@@ -61,7 +93,7 @@ jobs:
         if: always()
         with:
           name: tourney-${{ matrix.key }}
-          if-no-files-found: error
+          if-no-files-found: warn
           path: |
             log
             RESULT-${{ matrix.key }}.hbp
@@ -69,31 +101,34 @@ jobs:
 
   dir-curve:
     name: dir-curve (held-out learning curve on real enwik8 text)
+    needs: corpus
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch enwik8 + take an 8 MB slice (real Wikipedia bytes)
+      - uses: actions/download-artifact@v4
+        with:
+          name: pinned-enwik8
+          path: .
+      - name: Verify enwik8 and take an 8 MB slice
         run: |
-          set -e
-          ok=0
-          for url in https://mattmahoney.net/dc/enwik8.zip http://mattmahoney.net/dc/enwik8.zip ; do
-            if curl -fL --retry 3 --connect-timeout 20 -o e.zip "$url"; then ok=1; break; fi
-          done
-          test "$ok" -eq 1
-          unzip -o e.zip >/dev/null
+          set -euo pipefail
+          echo "2b49720ec4d78c3c9fabaee6e4179a5e997302b3a70029f30f2d582218c024a8  enwik8" | sha256sum -c -
           head -c 8000000 enwik8 > slice.bin
           echo "slice bytes: $(wc -c < slice.bin)"
       - name: Compile dir
         run: rustc --edition=2021 -O hutter/variants/dir/hp_dir.rs -o hp
       - name: Run the held-out learning curve (expand vs dup vs shuffle)
         run: |
-          set -e
+          set -euo pipefail
           ./hp curve slice.bin | tee curve.log
+          test "$(grep -c '^CKPT|' curve.log)" -eq 15
+          ! grep '^CKPT|' curve.log | grep -vq 'replay_exact=1'
+          slice_sha=$(sha256sum slice.bin | cut -d' ' -f1)
           {
-            echo "DIRCURVE|corpus=enwik8_slice_8MB|held_out=second_half|controls=expand_dup_shuffle|lane=cloud_gitram|note=directional_expansion_vs_repeated_exposure_vs_bookkeeping|score=held_out_archive_bytes_only|claims_final_apex=0|json=0"
+            echo "DIRCURVE|corpus=enwik8_slice_8MB|input_sha256=$slice_sha|held_out=second_half|controls=expand_dup_shuffle|lane=cloud_gitram|class=MEASURED_CONTROL_V1|direction_count_proof=0|score=held_out_archive_bytes_only|claims_final_apex=0|json=0"
           } > DIR-CURVE.hbp
-          grep -E '^CKPT\|' curve.log >> DIR-CURVE.hbp || true
+          grep -E '^CKPT\|' curve.log >> DIR-CURVE.hbp
           sha256sum DIR-CURVE.hbp | tee DIR-CURVE.hbp.sha256
           echo "=== CURVE ==="; cat DIR-CURVE.hbp
       - uses: actions/upload-artifact@v4
