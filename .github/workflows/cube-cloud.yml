@@ -1,0 +1,30 @@
+name: unified-omega cloud builds (9 scripts parallel)
+on:
+  workflow_dispatch:
+    push:
+        paths: [ 'unified_omega.rs', 'scripts/**', '.github/workflows/cube-cloud.yml' ]
+        permissions:
+          contents: read
+          jobs:
+            build:
+                name: ${{ matrix.script }}
+                    strategy:
+                          fail-fast: false
+                                max-parallel: 10
+                                      matrix:
+                                              script: [ egyptian-hieroglyphs, cuneiform-sumerian, sanskrit-devanagari, anatolian-hieroglyphs, linear-a, linear-b, meroitic, phoenician, old-persian-cuneiform ]
+                                                  runs-on: ubuntu-latest
+                                                      timeout-minutes: 30
+                                                          steps:
+                                                                - uses: actions/checkout@v4
+                                                                      - run: tr -d '\r' < unified_omega.rs > uo.rs && rustc --edition=2021 -O uo.rs -o uo
+                                                                            - run: ./uo build --source "scripts/${{ matrix.script }}" --output "out/${{ matrix.script }}" --seat 8467a937cba309f7 | tee build.log && grep -q UNIFIED_OMEGA_PASS build.log
+                                                                                  - if: always()
+                                                                                          uses: actions/upload-artifact@v4
+                                                                                                  with:
+                                                                                                            name: omega-${{ matrix.script }}
+                                                                                                                      if-no-files-found: error
+                                                                                                                                path: |
+                                                                                                                                            out/${{ matrix.script }}/**
+                                                                                                                                                        build.log
+                                                                                                                                                        
