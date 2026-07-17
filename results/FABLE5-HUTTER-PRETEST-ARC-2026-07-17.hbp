@@ -1,0 +1,15 @@
+HUTTERARCHDR|schema=ASOLARIA-HUTTER-PRETEST-ARC-V1|seat=ACER-CLAUDE-FABLE5|pid=8467a937cba309f7|glyph=BH1024:SEAT-FABLE5|dates=2026-07-16..17|lane=cloud_gitram|score_law=archive_plus_decoder_never_gain_ledger|json=0
+E8|variant=base_order2|archive_bytes=37602334|decoder_src=6327|bpc=3.0082|roundtrip_exact=1|json=0
+E8|variant=dir|archive_bytes=30268843|decoder_src=19661|bpc=2.4215|roundtrip_exact=1|json=0
+E8|variant=match_lzp|archive_bytes=29749924|decoder_src=14954|bpc=2.3800|roundtrip_exact=1|json=0
+E8|variant=mix|archive_bytes=26421998|decoder_src=12918|bpc=2.1138|roundtrip_exact=1|note=GENERIC_CONTROL_CEILING|json=0
+E8SWEEP|variant=v2_omega_expand|dirs4=24849532|dirs8=24515155|dirs40=24369809|bpc40=1.9496|monotonic=1|roundtrip_exact=1|json=0
+E9|system=mix|archive_bytes=236419493|bpc=1.8914|roundtrip_exact=1|sha=159b85351e5f76e6...|json=0
+E9|system=v2_omega_expand_dirs40|archive_bytes=211872902|bpc=1.6950|roundtrip_exact=1|encode_wall=1:34:52|json=0
+SCALECURVE|margin_expand_over_mix=4.7pct@1.5MB,7.8pct@100MB,10.4pct@1GB|widening=1|operator_scale_prediction=CONFIRMED|record_gap=1.9x_vs_110MB|hutter_win=0|json=0
+DIRCURVE|corpus=enwik8_8MB_slice|p16_expand=1225917|p16_shuffle=1285448|p16_dup=1488689|law=distinct_directions_beat_repeated_exposure|replay_exact_all=1|json=0
+SGRAM|streaming=1|peak_rss_mb=34_at_any_size|archive_byte_identical_to_mix=1|sverify_200MB_exact=1|bpc_200MB=1.9271|review=PASS|json=0
+BANDLADDER|floors=64,256,1024,4096|omega_directions=1|reversible=1|ladder_bytes=38887122|flat_bytes=6805888|compounds=0|why=bijection_preserves_entropy_glyph_layer_is_addressing_not_compression|review=PASS|json=0
+DEEPEXPAND|dirs_40_to_1600=REVERSES_on_small_data|mixer_undertrained|expansion_scale_gated=1|json=0
+CLAIMS|archive_ratio=NOT_CLAIMED|claims_final_apex=0|sub_shannon=SETTLED_NEGATIVE|higher_floors=HELD|json=0
+HUTTERARCFTR|receipt_sha256=6791c7d3b47ea2b7808a382572642f06c74d9a73b776c0e94f2c16e09eb52b61|rows=14|json=0
