@@ -396,14 +396,14 @@ fn measure(input: &[u8], label: &str) -> R<(usize, usize, bool, bool, String)> {
     let flat = flat_sgram_archive(input);
     let ladder = arc.len();
     let compounds = ladder < flat;
-    let bpc = if input.is_empty() {0.0} else {(ladder as f64 * 8.0)/input.len() as f64};
+    let bpc_e4: u128 = if input.is_empty() { 0 } else { (ladder as u128 * 8 * 10_000) / input.len() as u128 }; // integer only (no float)
     for r in &reports {
         eprintln!("  BAND|name={}|dir={}|residual_raw={}|residual_comp={}|floor_omega={}", r.name, r.dir, r.residual_bytes, r.residual_comp, &r.floor_omega[..16]);
     }
     eprintln!("  UNIFIEDOMEGA={}", unified);
     println!(
-        "OMNIBIT_LADDER|corpus={}|input_bytes={}|ladder_archive_bytes={}|flat_sgram_bytes={}|compounds={}|bpc={:.4}|roundtrip_exact={}|decoder_src_bytes={}|archive_ratio=NOT_CLAIMED|claims_final_apex=0|json=0",
-        label, input.len(), ladder, flat, compounds as u32, bpc, exact as u32, decoder_src_bytes()
+        "OMNIBIT_LADDER|corpus={}|input_bytes={}|ladder_archive_bytes={}|flat_sgram_bytes={}|compounds={}|bpc={}.{:04}|roundtrip_exact={}|decoder_src_bytes={}|archive_ratio=NOT_CLAIMED|claims_final_apex=0|json=0",
+        label, input.len(), ladder, flat, compounds as u32, bpc_e4 / 10_000, bpc_e4 % 10_000, exact as u32, decoder_src_bytes()
     );
     Ok((ladder, flat, compounds, exact, unified))
 }
