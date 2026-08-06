@@ -1,5 +1,17 @@
 # asolaria-cube-cloud
 
+## Toolchain rule (operator, global — no exceptions)
+
+**Rust 1.81 with clippy. Integer arithmetic and ternary (trits) only — never float.**
+
+Pinned in `rust-toolchain.toml` (`channel = "1.81.0"`, `components = ["clippy", "rustfmt"]`),
+declared as `rust-version = "1.81"` in every `Cargo.toml`, and enforced in CI by
+`cargo clippy --all-targets -- -D warnings` plus a hard grep that fails the build on any
+`f32`/`f64` in `src/` or `tests/`.
+
+Any receipt in this repository naming a toolchain other than 1.81 records a run made outside
+the rule. It is retained as history, not as the toolchain of record.
+
 Cloud-run surface for the Asolaria unified-Omega cube trainer (seat ACER-CLAUDE-FABLE5).
 Runs OFF the operator's local machine — on cloud agents / GitHub Actions runners.
 
