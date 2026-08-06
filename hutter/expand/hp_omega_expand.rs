@@ -570,11 +570,11 @@ fn print_omega() {
 fn report(mode: &str, input: usize, archive: usize, roundtrip: u32, dirs: usize, dmode: DirMode) {
     let dsrc = decoder_src_bytes();
     let total = archive as u64 + dsrc;
-    let ratio = if archive > 0 { input as f64 / archive as f64 } else { 0.0 };
-    let bpc = if input > 0 { (archive as f64 * 8.0) / input as f64 } else { 0.0 };
+    let ratio_e4: u128 = if archive > 0 { (input as u128 * 10_000) / archive as u128 } else { 0 }; // integer only (no float)
+    let bpc_e4: u128 = if input > 0 { (archive as u128 * 8 * 10_000) / input as u128 } else { 0 }; // integer only (no float)
     println!(
-        "PILOT|mode={}|dirs={}|dir_mode={}|input_bytes={}|archive_bytes={}|decoder_src_bytes={}|total_bytes={}|ratio_x={:.4}|bpc={:.4}|archive_ratio=NOT_CLAIMED|claims_final_apex=0|roundtrip={}",
-        mode, dirs, dirmode_name(dmode), input, archive, dsrc, total, ratio, bpc, roundtrip
+        "PILOT|mode={}|dirs={}|dir_mode={}|input_bytes={}|archive_bytes={}|decoder_src_bytes={}|total_bytes={}|ratio_x={}.{:04}|bpc={}.{:04}|archive_ratio=NOT_CLAIMED|claims_final_apex=0|roundtrip={}",
+        mode, dirs, dirmode_name(dmode), input, archive, dsrc, total, ratio_e4 / 10_000, ratio_e4 % 10_000, bpc_e4 / 10_000, bpc_e4 % 10_000, roundtrip
     );
 }
 
