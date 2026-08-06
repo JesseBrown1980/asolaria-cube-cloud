@@ -609,10 +609,10 @@ fn main() {
             if a.len() < 4 { eprintln!("usage: sgram_mix compress <in> <archive>"); exit(2); }
             let (input, archive) = compress_stream(&a[2], &a[3]);
             let dsrc = decoder_src_bytes();
-            let bpc = if input > 0 { (archive as f64 * 8.0) / input as f64 } else { 0.0 };
+            let bpc_e4: u128 = if input > 0 { (archive as u128 * 8 * 10_000) / input as u128 } else { 0 }; // integer only (no float)
             println!(
-                "SGRAM|mode=compress|input_bytes={}|archive_bytes={}|decoder_src_bytes={}|bpc={:.4}|roundtrip_exact=|json=0",
-                input, archive, dsrc, bpc
+                "SGRAM|mode=compress|input_bytes={}|archive_bytes={}|decoder_src_bytes={}|bpc={}.{:04}|roundtrip_exact=|json=0",
+                input, archive, dsrc, bpc_e4 / 10_000, bpc_e4 % 10_000
             );
         }
         "decompress" => {
@@ -636,13 +636,13 @@ fn main() {
             let (out_hash, out_len) = decompress_sha(&tmp);
             let _ = fs::remove_file(&tmp);
             let exact = (in_hash == out_hash && out_len == input) as u32;
-            let bpc = if input > 0 { (archive as f64 * 8.0) / input as f64 } else { 0.0 };
+            let bpc_e4: u128 = if input > 0 { (archive as u128 * 8 * 10_000) / input as u128 } else { 0 }; // integer only (no float)
             let dsrc = decoder_src_bytes();
             eprintln!("sverify: input_sha256={}", hex(&in_hash));
             eprintln!("sverify: recon_sha256={}", hex(&out_hash));
             println!(
-                "SGRAM|mode=sverify|input_bytes={}|archive_bytes={}|decoder_src_bytes={}|bpc={:.4}|roundtrip_exact={}|json=0",
-                input, archive, dsrc, bpc, exact
+                "SGRAM|mode=sverify|input_bytes={}|archive_bytes={}|decoder_src_bytes={}|bpc={}.{:04}|roundtrip_exact={}|json=0",
+                input, archive, dsrc, bpc_e4 / 10_000, bpc_e4 % 10_000, exact
             );
             if exact != 1 { eprintln!("ROUNDTRIP_FAIL"); exit(1); }
         }
